@@ -1,4 +1,5 @@
 import datetime
+import pytz
 
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -6,27 +7,10 @@ from spotipy.oauth2 import SpotifyOAuth
 import cred
 from cred import ARCHIVE, PLAYLIST
 import server
+import logging
 
-"""
-oggi: proof of concept authentication
-objectives: oX
-- minimal HTML page with link to spotify auth -> HTML page (o1)
-- minimal python server that: -> flask minimal server (o2)
-    - serves HTML page
-    - accept callback from spotify to save token
-- open port with ngrok -> install ngrok and open ports (o3)
-
-obbiettivo: autenticare un utente (nuovo) su una webapp/servizio (spotifriends.com) che usa il tuo spotify
-1. user pp apri spotifriends.com
-2. clicchi un link che dice "autenticati su spotify"
-3. questo link ti porta a una pagina DI SPOTIFY, che ti chiede se ti va bene dare accesso a spotifriends
-4. quando clicchi conferma, vieni ridirezionato a spotifriends.com/callback:
-    redirect to https://www.spotifriends.com/callback?token=THISISMYC0MPL3XT0K3N
-    so spotifriends.com receives a GET (probably) request with param token
-5. spotifriends, for all successive calls to spotify API for user pp, passes token with each request, until token is not valid anymore and authentication is requested again (error 40X: unauthorized, re-authorize)
-
-
-"""
+logger = logging.getLogger(__name__)
+LIMIT_ADD = 10
 
 
 def show_tracks(results):
@@ -38,29 +22,58 @@ def show_tracks(results):
         # print(datetime.datetime.fromisoformat(added_at))
 
 
-def show_p(playlists):
-    for item in playlists["items"]:
-        print(item)
-        # id = ite
+def move_existing_to_archive(sp):
+    logger.info(f"removing songs from user {sp.me()}")
+    items = sp.playlist_items(PLAYLIST)["items"]
+    # todo while items.next() items
+    tomove = []  # [[uri,loc], [uri2,loc2]...]
+    for i, item in enumerate(items):
+        track = item["track"]
+        if item["added_by"]["id"] == sp.me()["id"]:
+            tomove.append({"uri": track["uri"], "positions": [i]})
+    if tomove:
+        sp.playlist_remove_specific_occurrences_of_items(PLAYLIST, tomove)
+        sp.playlist_add_items(ARCHIVE, [i["uri"] for i in tomove])
 
 
-# while results["next"]:
-#     results = sp.next(results)
-#     show_tracks(results)
+utc = pytz.UTC
+
+
+def add_last_likes_to_playlist(sp):
+    last_likes = [
+        i["track"]
+        for i in sp.current_user_saved_tracks(limit=LIMIT_ADD)["items"]
+        if datetime.datetime.fromisoformat(i["added_at"])
+        < datetime.datetime.today().replace(tzinfo=utc) - datetime.timedelta(days=7)
+    ]
+    sp.playlist_add_items(PLAYLIST, [i["uri"] for i in last_likes])
 
 
 def main():
     tokens = server.load_tokens()
+    print([(id, info["spotify_username"]) for id, info in tokens.items()])
+    big_test = None
     for id, info in tokens.items():
-    #   last_week_likes = get last week's likes URIs
         print(f"-------{info['spotify_username']}---------")
-        sp = spotipy.Spotify(auth=info['access_token'])
-        results = sp.current_user_saved_tracks(limit=15)
-    #   put last_week_likes in PLAYLIST <-- limit number? trickle down?
-    #   from current PLAYLIST, move user's tracks to ARCHIVE
+        sp = server.create_spotify_client(id)
+        # if info["spotify_username"] == "pollomarzo":
+        #     big_test = sp.current_user_saved_tracks(limit=LIMIT_ADD)["items"][0]
+        # else:
+        #     print(big_test.keys())
+        #     print(big_test["track"].keys())
+        #     print(big_test["track"]["uri"])
+        #     sp.playlist_add_items(PLAYLIST, [big_test["track"]["uri"]])
+        #     print("FUCK YES")
+        move_existing_to_archive(sp)
+        add_last_likes_to_playlist(sp)
+        show_tracks(sp.current_user_saved_tracks(limit=LIMIT_ADD))
+        continue
+        # sp.get_user_token(id)
 
-        show_tracks(results)
-        print(f'\n\n\n')
+        add_last_likes_to_playlist(sp)
+        print(f"for user {info['spotify_username']}")
+        # show_tracks(results)
+        print(f"\n\n\n")
 
     # track = results["items"][0]["track"]
     # print(track.keys())
