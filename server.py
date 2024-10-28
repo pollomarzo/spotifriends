@@ -18,7 +18,7 @@ app.secret_key = os.urandom(24)  # Required for session management
 # Spotify App credentials
 SPOTIFY_CLIENT_ID = client_id
 SPOTIFY_CLIENT_SECRET = client_secret
-REDIRECT_URI = "https://1b64-151-81-26-199.ngrok-free.app/callback"
+REDIRECT_URI = redirect_uri
 SCOPES = scopes
 
 
