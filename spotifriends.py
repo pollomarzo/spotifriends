@@ -9,7 +9,7 @@ from cred import ARCHIVE, PLAYLIST
 import server
 from log import logger
 
-LIMIT_ADD = 10
+LIMIT_ADD = 15
 
 
 def show_tracks(results):
